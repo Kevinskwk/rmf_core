@@ -49,9 +49,14 @@ rmf_traffic::agv::Graph parse_graph(
   }
 
   rmf_traffic::agv::Graph graph;
-  std::unordered_map<
-    std::string, std::vector<rmf_traffic::agv::Graph::Waypoint>> lift_wps;
+  std::unordered_map<std::string, rmf_fleet_adapter::agv::LiftWps> lift_wps;
   std::size_t vnum = 0;  // To increment lane endpoint ids
+
+  using Constraint = rmf_traffic::agv::Graph::OrientationConstraint;
+  using ConstraintPtr = rmf_utils::clone_ptr<Constraint>;
+
+  using Lane = rmf_traffic::agv::Graph::Lane;
+  using Event = Lane::Event;
 
   for (const auto& level : levels)
   {
@@ -95,18 +100,15 @@ rmf_traffic::agv::Graph parse_graph(
       if (lift_option)
       {
         const std::string lift_name = lift_option.as<std::string>();
-        std::cout << lift_name << " " << wp.index() << std::endl;
+        //std::cout << lift_name << " " << wp.index() << std::endl;
         if (lift_name != "")
-          lift_wps[lift_name].push_back(wp);
+          lift_wps[lift_name].cabin_wps.push_back(wp.index());
       }
     }
 
     const YAML::Node& lanes = level.second["lanes"];
     for (const auto& lane : lanes)
     {
-      using Constraint = rmf_traffic::agv::Graph::OrientationConstraint;
-      using ConstraintPtr = rmf_utils::clone_ptr<Constraint>;
-
       ConstraintPtr constraint = nullptr;
 
       const YAML::Node& options = lane[2];
@@ -139,8 +141,6 @@ rmf_traffic::agv::Graph parse_graph(
         }
       }
 
-      using Lane = rmf_traffic::agv::Graph::Lane;
-      using Event = Lane::Event;
       rmf_utils::clone_ptr<Event> entry_event;
       rmf_utils::clone_ptr<Event> exit_event;
       if (const YAML::Node mock_lift_option = options["demo_mock_floor_name"])
@@ -188,21 +188,56 @@ rmf_traffic::agv::Graph parse_graph(
         entry_event = Event::make(Lane::Dock(dock_name, duration));
       }
 
-      graph.add_lane(
-        {lane[0].as<std::size_t>() + vnum, entry_event},
-        {lane[1].as<std::size_t>() + vnum, exit_event, std::move(constraint)});
-      std::cout << lane[0].as<std::size_t>() << "," << lane[1].as<std::size_t>() << std::endl;
+      std::size_t begin = lane[0].as<std::size_t>() + vnum;
+      std::size_t end = lane[1].as<std::size_t>() + vnum;
+
+      bool add_lane = true;
+
+      for (auto& lift : lift_wps)
+      {
+        auto wps = lift.second.cabin_wps;
+        if (std::find(wps.begin(), wps.end(), begin) != wps.end())
+        {
+          lift.second.entry_wps.push_back(end);
+          add_lane = false;
+          break;
+        }
+      }
+
+      if (add_lane)
+      {
+        graph.add_lane(
+          {lane[0].as<std::size_t>() + vnum, entry_event},
+          {lane[1].as<std::size_t>() + vnum, exit_event, std::move(constraint)});
+        //std::cout << lane[0].as<std::size_t>() << "," << lane[1].as<std::size_t>() << std::endl;
+      }
     }
     vnum += vnum_temp;
   }
 
   for (const auto& lift : lift_wps)
   {
-    const auto& wps = lift.second;
-    for (int i = 0; i < wps.size()-1; i++)
+    for (const auto& cabin_id : lift.second.cabin_wps)
     {
-      graph.add_lane(wps[i].index(), wps[i+1].index());
-      graph.add_lane(wps[i+1].index(), wps[i].index());
+      for (const auto& entry_id : lift.second.entry_wps)
+      {
+        auto cabin_wp = graph.get_waypoint(cabin_id);
+        auto entry_wp = graph.get_waypoint(entry_id);
+
+        if (cabin_wp.get_map_name() != entry_wp.get_map_name())
+        {
+          ConstraintPtr constraint = nullptr;
+          rmf_utils::clone_ptr<Event> entry_event;
+          rmf_utils::clone_ptr<Event> exit_event;
+          const rmf_traffic::Duration duration = std::chrono::seconds(4);
+          entry_event = Event::make(
+            Lane::LiftDoorOpen(lift.first, entry_wp.get_map_name(), duration));
+          graph.add_lane(
+            {cabin_id, entry_event},
+            {entry_id, exit_event, std::move(constraint)});
+          //std::cout << entry_id << "," << cabin_id << std::endl;
+        }
+      }
     }
   }
 

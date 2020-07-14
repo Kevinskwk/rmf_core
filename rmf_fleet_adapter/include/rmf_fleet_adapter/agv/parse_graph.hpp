@@ -26,6 +26,12 @@
 namespace rmf_fleet_adapter {
 namespace agv {
 
+struct LiftWps
+{
+    std::vector<std::size_t> cabin_wps;
+    std::vector<std::size_t> entry_wps;
+};
+
 /// Parse the graph described by a yaml file.
 ///
 /// \warning This will throw a std::runtime_error if the file has a syntax
