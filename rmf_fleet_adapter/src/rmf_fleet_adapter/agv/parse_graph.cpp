@@ -102,7 +102,7 @@ rmf_traffic::agv::Graph parse_graph(
         const std::string lift_name = lift_option.as<std::string>();
         //std::cout << lift_name << " " << wp.index() << std::endl;
         if (lift_name != "")
-          lift_wps[lift_name].cabin_wps.push_back(wp.index());
+          lift_wps[lift_name].cabin_wps.insert(wp.index());
       }
     }
 
@@ -143,7 +143,7 @@ rmf_traffic::agv::Graph parse_graph(
 
       rmf_utils::clone_ptr<Event> entry_event;
       rmf_utils::clone_ptr<Event> exit_event;
-      if (const YAML::Node mock_lift_option = options["demo_mock_floor_name"])
+      /*if (const YAML::Node mock_lift_option = options["demo_mock_floor_name"])
       {
         // TODO(MXG): Replace this with a key like lift_name when we have proper
         // support for lifts.
@@ -163,7 +163,9 @@ rmf_traffic::agv::Graph parse_graph(
           Lane::LiftDoorOpen(lift_name, floor_name, duration));
         // NOTE(MXG): We do not need an exit event for lifts
       }
-      else if (const YAML::Node door_name_option = options["door_name"])
+      else */
+
+      if (const YAML::Node door_name_option = options["door_name"])
       {
         const std::string name = door_name_option.as<std::string>();
         const rmf_traffic::Duration duration = std::chrono::seconds(4);
@@ -198,7 +200,13 @@ rmf_traffic::agv::Graph parse_graph(
         auto wps = lift.second.cabin_wps;
         if (std::find(wps.begin(), wps.end(), begin) != wps.end())
         {
-          lift.second.entry_wps.push_back(end);
+          lift.second.entry_wps.insert(end);
+          add_lane = false;
+          break;
+        }
+        if (std::find(wps.begin(), wps.end(), end) != wps.end())
+        {
+          lift.second.entry_wps.insert(begin);
           add_lane = false;
           break;
         }
@@ -224,19 +232,26 @@ rmf_traffic::agv::Graph parse_graph(
         auto cabin_wp = graph.get_waypoint(cabin_id);
         auto entry_wp = graph.get_waypoint(entry_id);
 
+        ConstraintPtr constraint = nullptr;
+        rmf_utils::clone_ptr<Event> entry_event;
+        rmf_utils::clone_ptr<Event> exit_event;
+        const rmf_traffic::Duration duration = std::chrono::seconds(4);
+        entry_event = Event::make(
+          Lane::LiftDoorOpen(lift.first, entry_wp.get_map_name(), duration));
+
         if (cabin_wp.get_map_name() != entry_wp.get_map_name())
         {
-          ConstraintPtr constraint = nullptr;
-          rmf_utils::clone_ptr<Event> entry_event;
-          rmf_utils::clone_ptr<Event> exit_event;
-          const rmf_traffic::Duration duration = std::chrono::seconds(4);
-          entry_event = Event::make(
-            Lane::LiftDoorOpen(lift.first, entry_wp.get_map_name(), duration));
           graph.add_lane(
             {cabin_id, entry_event},
             {entry_id, exit_event, std::move(constraint)});
-          //std::cout << entry_id << "," << cabin_id << std::endl;
         }
+        else
+        {
+          graph.add_lane(
+            {entry_id, entry_event},
+            {cabin_id, exit_event, std::move(constraint)});  
+        }
+        //std::cout << entry_id << "," << cabin_id << std::endl;
       }
     }
   }

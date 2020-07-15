@@ -23,13 +23,15 @@
 
 #include <rmf_utils/optional.hpp>
 
+#include <set> 
+
 namespace rmf_fleet_adapter {
 namespace agv {
 
 struct LiftWps
 {
-    std::vector<std::size_t> cabin_wps;
-    std::vector<std::size_t> entry_wps;
+    std::set<std::size_t> cabin_wps;
+    std::set<std::size_t> entry_wps;
 };
 
 /// Parse the graph described by a yaml file.
