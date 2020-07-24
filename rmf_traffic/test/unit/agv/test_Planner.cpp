@@ -2593,4 +2593,31 @@ SCENARIO("Multilevel Planning")
     CHECK(count_events(*plan) == 2);
     CHECK(has_event(ExpectEvent::LiftDoorOpen, *plan));
   }
+
+  GIVEN("Waypoints with same x,y on different maps")
+  {
+    Graph graph;
+    graph.add_waypoint("L1", {-5, 0}); // 0
+    graph.add_waypoint("L1", {0, 0}); // 1
+    graph.add_waypoint("L2", {0, 0}); // 2
+    REQUIRE(graph.num_waypoints() == 3);
+
+    graph.add_lane(0, 1); // 0
+    graph.add_lane(1, 0); // 1
+    graph.add_lane(1, 2); // 2
+    graph.add_lane(2, 1); // 3
+
+    REQUIRE(graph.num_lanes() == 4);
+    Planner planner{
+      Planner::Configuration{graph, traits},
+      default_options};
+
+    // Plan from 0 -> 1
+    const rmf_traffic::Time time = std::chrono::steady_clock::now();
+    const auto start = rmf_traffic::agv::Planner::Start(time, 0, 0.0);
+    const auto goal = rmf_traffic::agv::Planner::Goal(2);
+    auto plan = planner.plan(start, goal);
+    REQUIRE(plan.success());
+    CHECK_PLAN(plan, {-5, 0}, 0.0, {0, 0}, {0, 1, 2});
+  }
 }
