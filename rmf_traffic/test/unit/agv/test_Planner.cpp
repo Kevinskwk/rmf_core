@@ -2596,6 +2596,8 @@ SCENARIO("Multilevel Planning")
 
   GIVEN("Waypoints with same x,y on different maps")
   {
+    using Event = Graph::Lane::Event;
+    using LiftMove = Graph::Lane::LiftMove;
     Graph graph;
     graph.add_waypoint("L1", {-5, 0}); // 0
     graph.add_waypoint("L1", {0, 0}); // 1
@@ -2604,8 +2606,10 @@ SCENARIO("Multilevel Planning")
 
     graph.add_lane(0, 1); // 0
     graph.add_lane(1, 0); // 1
-    graph.add_lane(1, 2); // 2
-    graph.add_lane(2, 1); // 3
+    graph.add_lane(
+      {1, Event::make(LiftMove("Lift1", "L2", 1s))}, 2); // 2
+    graph.add_lane(
+      {2, Event::make(LiftMove("Lift1", "L2", 1s))}, 1); // 3
 
     REQUIRE(graph.num_lanes() == 4);
     Planner planner{
@@ -2619,5 +2623,7 @@ SCENARIO("Multilevel Planning")
     auto plan = planner.plan(start, goal);
     REQUIRE(plan.success());
     CHECK_PLAN(plan, {-5, 0}, 0.0, {0, 0}, {0, 1, 2});
+    CHECK(count_events(*plan) == 1);
+    CHECK(has_event(ExpectEvent::LiftMove, *plan));
   }
 }
